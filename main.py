@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.handlers.auth import router as router_auth
+from app.handlers.events import router as router_events
 from database.base import init_db
 
 app = FastAPI()
@@ -19,7 +20,8 @@ app = FastAPI()
 
 @app.on_event('startup')
 async def startup():
-    await init_db(echo=False)
+    await init_db(echo=True)
 
 
 app.include_router(router=router_auth)
+app.include_router(router=router_events)

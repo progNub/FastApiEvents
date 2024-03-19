@@ -1,4 +1,4 @@
-from fastapi.routing import APIRouter
+from fastapi import APIRouter
 from fastapi import HTTPException, Depends
 from starlette import status
 
@@ -6,7 +6,7 @@ from app.schemas.auth import UserCreate, User, TokenPair
 from app import models
 from app.services import auth
 
-router = APIRouter(prefix='/auth')
+router = APIRouter(prefix='/api')
 
 
 @router.post('/users', response_model=User)

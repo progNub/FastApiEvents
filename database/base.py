@@ -31,15 +31,6 @@ class Manager:
             await session.refresh(obj)  # Обновляем атрибуты у объекта, чтобы получить его primary key.
         return obj
 
-    async def update(self, **kwargs):
-        for key, value in kwargs.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
-        async with db_conn.session as session:
-            await session.merge(self)  # изменяет уже имеющийся объект
-            await session.commit()
-            return self
-
     async def delete(self):
         async with db_conn.session as session:
             await session.delete(self)
@@ -57,7 +48,6 @@ class Manager:
             result = await session.execute(query)
             result = result.scalar_one_or_none()
             return result
-
 
     @classmethod
     async def all(cls) -> Sequence[Self]:
