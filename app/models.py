@@ -1,10 +1,9 @@
 from datetime import datetime, timezone
-from typing import Self, Tuple, Any
+from typing import Any
 
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, ScalarResult
-from sqlalchemy import or_, and_, select, Table
+from sqlalchemy import or_, select, Table
 from sqlalchemy.exc import NoResultFound
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.selectable import Select
 
 from sqlalchemy.orm import relationship, selectinload
@@ -81,49 +80,51 @@ class Event(Base, Manager):
         return f"<{self.__class__}: {self.title}>"
 
     @classmethod
-    async def _get_events_with_session(cls) -> tuple[Select, AsyncSession]:
-        """Возвращает подготовленный запрос и текущую сессию"""
-        session = db_conn.session
-        time_now = datetime.now(timezone.utc)
-        query = select(Event)
-        query_future_events = query.filter(Event.meeting_time > time_now)
-        query_with_users = query_future_events.options(selectinload(Event.users))
-        return query_with_users, session
+    async def _get_events_with_session(cls) -> Select:
+        """Возвращает подготовленный запрос"""
+        async with db_conn.session:
+            time_now = datetime.now(timezone.utc)
+            query = select(Event)
+            query_future_events = query.filter(Event.meeting_time > time_now)
+            query_with_users = query_future_events.options(selectinload(Event.users))
+            return query_with_users
 
     @classmethod
     async def get_events_with_users(cls) -> ScalarResult[Any]:
-        query, session = await cls._get_events_with_session()
-        async with session:
+        async with db_conn.session as session:
+            query = await cls._get_events_with_session()
             events = await session.execute(query)
             return events.scalars()
 
     @classmethod
     async def get_users_events(cls, user_id) -> ScalarResult[Any]:
-        query, session = await cls._get_events_with_session()
-        async with session:
+        async with db_conn.session as session:
+            query = await cls._get_events_with_session()
             events = await session.execute(query.filter(Event.users.any(id=user_id)))
             return events.scalars()
 
     @classmethod
-    async def add_user_or_remove(cls, event_id, user_id):
-        query, session = await cls._get_events_with_session()
-        with session:
+    async def add_user_or_remove(cls, event_id, user: User, action: str) -> Any | None:
+        async with db_conn.session as session:
+            query = await cls._get_events_with_session()
             event = await session.execute(query.where(Event.id == event_id))
-            user = await session.execute(select(User).where(User.id == user_id))
             event = event.scalar_one_or_none()
-            user = user.scalar_one_or_none()
 
             if event is None:
                 raise NoResultFound(f'Event with id {event_id} does not exist')
-            if user is None:
-                raise NoResultFound(f'User with id {user_id} does not exist')
 
-            if user in event.users:
-                event.users.remove(user)
-            else:
+            user = await session.merge(user)  # добавляем юзера в текущую сессию.
+
+            if action == 'add':
+                if user in [usr for usr in event.users]:
+                    raise NoResultFound(f'User {user.id} already subscribed')
                 event.users.append(user)
 
-            await session.merge(event)
+            elif action == 'remove':
+                if user not in event.users:
+                    raise NoResultFound(f'User {user.id} yet is not subscriber')
+                event.users.remove(user)
+
             await session.commit()
             await session.refresh(event)
             return event
